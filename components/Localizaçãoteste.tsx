@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, Button, StyleSheet, Alert, Linking, ScrollView, Dimensions } from 'react-native';
+import {
+  SafeAreaView,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  Linking,
+  ScrollView,
+  ActivityIndicator,
+} from 'react-native';
 import * as Location from 'expo-location';
 import Markdown from 'react-native-markdown-display';
 import { WebView } from 'react-native-webview';
@@ -9,12 +19,12 @@ const OPENWEATHER_API_KEY = "11baabba2e39d1fe964a6668d8c8c1f6";
 const WEATHER_BASE_URL = "http://api.openweathermap.org/data/2.5/weather";
 
 export default function App() {
-  const [latitude, setLatitude] = useState(null);
-  const [longitude, setLongitude] = useState(null);
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [addressData, setAddressData] = useState(null);
+  const [addressData, setAddressData] = useState<any>(null);
   const [loadingAddress, setLoadingAddress] = useState(false);
-  const [weatherData, setWeatherData] = useState(null);
+  const [weatherData, setWeatherData] = useState<any>(null);
   const [loadingWeather, setLoadingWeather] = useState(false);
 
   const getMyCurrentLocation = async () => {
@@ -31,9 +41,14 @@ export default function App() {
 
     try {
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
-      setLatitude(location.coords.latitude);
-      setLongitude(location.coords.longitude);
-      Alert.alert('Sucesso!', 'Coordenadas obtidas.');
+      const { latitude: lat, longitude: lon } = location?.coords || {};
+      if (lat && lon) {
+        setLatitude(lat);
+        setLongitude(lon);
+        Alert.alert('Sucesso!', 'Coordenadas obtidas.');
+      } else {
+        Alert.alert('Erro', 'Não foi possível obter as coordenadas.');
+      }
     } catch (error) {
       Alert.alert('Erro de GPS', 'Não foi possível obter a localização.');
     } finally {
@@ -56,9 +71,11 @@ export default function App() {
       const apiUrl = `https://api.opencagedata.com/geocode/v1/json?q=${latitude}+${longitude}&key=${OPENCAGE_API_KEY}`;
       const response = await fetch(apiUrl);
       const data = await response.json();
-      if (data.results.length > 0) {
-        const components = data.results[0].components;
-        const formattedAddress = data.results[0].formatted;
+
+      const result = data?.results?.[0];
+      if (result) {
+        const components = result.components || {};
+        const formattedAddress = result.formatted || 'Endereço não encontrado';
         setAddressData({
           address: formattedAddress,
           city: components.city || components.town || components.village || 'N/A',
@@ -85,16 +102,23 @@ export default function App() {
       const url = `${WEATHER_BASE_URL}?lat=${latitude}&lon=${longitude}&appid=${OPENWEATHER_API_KEY}&units=metric&lang=pt`;
       const response = await fetch(url);
       const data = await response.json();
-      if (data.cod === 200) {
+
+      if (data?.cod === 200) {
+        const weatherMain = data.weather?.[0]?.description || 'N/A';
+        const temp = data.main?.temp?.toFixed(1) || 'N/A';
+        const feelsLike = data.main?.feels_like?.toFixed(1) || 'N/A';
+        const humidity = data.main?.humidity || 'N/A';
+        const wind = data.wind?.speed?.toFixed(1) || 'N/A';
+        const city = data.name || 'N/A';
+
         setWeatherData({
-          main: data.weather[0].description,
-          temp: data.main.temp.toFixed(1),
-          feels_like: data.main.feels_like.toFixed(1),
-          humidity: data.main.humidity,
-          wind: data.wind.speed.toFixed(1),
-          city: data.name,
+          main: weatherMain,
+          temp,
+          feels_like: feelsLike,
+          humidity,
+          wind,
+          city,
         });
-        Alert.alert('Clima Encontrado', `Temperatura: ${data.main.temp.toFixed(1)}°C em ${data.name}`);
       }
     } catch (error) {
       Alert.alert('Erro de Conexão', 'Não foi possível buscar o clima.');
@@ -103,71 +127,155 @@ export default function App() {
     }
   };
 
-  const renderAddressDetails = () => {
-    if (!addressData) return null;
-    const markdownContent = `
-# Endereço:
+  const renderButton = (text: string, onPress: () => void, loadingFlag: boolean, disabled: boolean = false) => (
+    <TouchableOpacity
+      style={[styles.button, (disabled || loadingFlag) && styles.buttonDisabled]}
+      onPress={onPress}
+      disabled={disabled || loadingFlag}
+    >
+      {loadingFlag ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{text}</Text>}
+    </TouchableOpacity>
+  );
+
+  const renderCard = (title: string, content: string) => (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>{title}</Text>
+      <Markdown style={markdownStyles}>{content}</Markdown>
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.title}>🌍 Projeto Geolocalização</Text>
+
+        {renderButton("1️⃣ Obter Localização", getMyCurrentLocation, loading)}
+        {latitude && longitude && (
+          <>
+            <TouchableOpacity style={styles.mapButton} onPress={openInGoogleMaps}>
+              <Text style={styles.mapButtonText}>🗺️ Ver no Google Maps</Text>
+            </TouchableOpacity>
+
+            <View style={styles.mapContainer}>
+              <WebView
+                source={{
+                  uri: `https://www.openstreetmap.org/export/embed.html?bbox=${longitude - 0.005}%2C${latitude - 0.005}%2C${longitude + 0.005}%2C${latitude + 0.005}&layer=mapnik&marker=${latitude}%2C${longitude}`
+                }}
+                style={{ flex: 1, borderRadius: 10 }}
+              />
+            </View>
+          </>
+        )}
+
+        {renderButton("2️⃣ Consultar Endereço", getReverseGeocoding, loadingAddress, !latitude)}
+        {addressData &&
+          renderCard(
+            "📍 Endereço Encontrado",
+            `
 - **Rua:** ${addressData.road}
 - **Cidade:** ${addressData.city}
 - **Estado:** ${addressData.state}
 - **CEP:** ${addressData.postcode}
 - **País:** ${addressData.country}
-    `;
-    return <Markdown style={markdownStyles}>{markdownContent}</Markdown>;
-  };
+            `
+          )}
 
-  const renderWeatherDetails = () => {
-    if (!weatherData) return null;
-    const markdownContent = `
-# Clima Atual em ${weatherData.city}:
+        {renderButton("3️⃣ Consultar Clima", getWeatherInfo, loadingWeather, !latitude)}
+        {weatherData &&
+          renderCard(
+            `☀️ Clima em ${weatherData.city}`,
+            `
 - **Descrição:** ${weatherData.main}
 - **Temperatura:** ${weatherData.temp}°C
-- **Sensação Térmica:** ${weatherData.feels_like}°C
+- **Sensação:** ${weatherData.feels_like}°C
 - **Humidade:** ${weatherData.humidity}%
 - **Vento:** ${weatherData.wind} m/s
-    `;
-    return <Markdown style={markdownStyles}>{markdownContent}</Markdown>;
-  };
-
-  return (
-    <ScrollView style={{ flex: 1, padding: 20, backgroundColor: '#f0f4f7' }}>
-      <Text style={styles.title}>Projeto Geolocalização</Text>
-
-      <Button title={loading ? "Buscando..." : "1. PEGAR MINHA LOCALIZAÇÃO"} onPress={getMyCurrentLocation} disabled={loading} />
-
-      {latitude && longitude && (
-        <>
-          <Button title="Ver no Google Maps" color="#4285F4" onPress={openInGoogleMaps} style={{ marginTop: 10 }} />
-
-          <View style={{ height: 300, marginTop: 15 }}>
-            <WebView
-              source={{
-                uri: `https://www.openstreetmap.org/export/embed.html?bbox=${longitude-0.005}%2C${latitude-0.005}%2C${longitude+0.005}%2C${latitude+0.005}&layer=mapnik&marker=${latitude}%2C${longitude}`
-              }}
-              style={{ flex: 1 }}
-            />
-          </View>
-        </>
-      )}
-
-      <View style={{ marginTop: 20 }}>
-        <Button title={loadingAddress ? "Buscando Endereço..." : "2. CONSULTAR ENDEREÇO"} onPress={getReverseGeocoding} disabled={!latitude || loadingAddress} />
-        {renderAddressDetails()}
-
-        <View style={{ marginTop: 20 }}>
-          <Button title={loadingWeather ? "Buscando Clima..." : "3. CONSULTAR CLIMA"} onPress={getWeatherInfo} disabled={!latitude || loadingWeather} />
-          {renderWeatherDetails()}
-        </View>
-      </View>
-    </ScrollView>
+            `
+          )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const markdownStyles = {
-  heading1: { fontSize: 18, fontWeight: 'bold', color: '#005cb3', marginBottom: 5 },
-  list_item: { fontSize: 14, color: '#333', marginBottom: 4 },
+  list_item: { fontSize: 15, color: '#333', marginBottom: 5 },
+  text: { color: '#333' },
 };
 
-const styles = {
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, textAlign: 'center', color: '#333' },
-};
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  container: {
+    padding: 20,
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#005cb3',
+    marginBottom: 25,
+    textAlign: 'center',
+  },
+  button: {
+    backgroundColor: '#007aff',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginVertical: 8,
+    width: '90%',
+    alignItems: 'center',
+    shadowColor: '#007aff',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  buttonDisabled: {
+    backgroundColor: '#9cc6f7',
+  },
+  buttonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  mapButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#007aff',
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 10,
+    width: '90%',
+    alignItems: 'center',
+  },
+  mapButtonText: {
+    color: '#007aff',
+    fontWeight: '600',
+  },
+  mapContainer: {
+    height: 250,
+    width: '100%',
+    borderRadius: 10,
+    marginTop: 15,
+    overflow: 'hidden',
+  },
+  card: {
+    backgroundColor: '#eaf3ff',
+    borderRadius: 15,
+    padding: 15,
+    width: '95%',
+    marginTop: 15,
+    shadowColor: '#005cb3',
+    shadowOpacity: 0.15,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#005cb3',
+    marginBottom: 10,
+  },
+});
