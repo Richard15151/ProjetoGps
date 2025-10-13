@@ -1,50 +1,128 @@
-# Welcome to your Expo app 👋
+# 🌦️ Localização, Endereço e Clima - React Native (Expo)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Este projeto é um aplicativo **React Native com Expo** que utiliza o **GPS do dispositivo** para obter a localização atual do usuário, converter coordenadas geográficas em **endereço completo** e buscar informações **meteorológicas em tempo real** (como temperatura e condições climáticas).
 
-## Get started
+---
 
-1. Install dependencies
+## 🧭 Funcionalidades
 
-   ```bash
-   npm install
-   ```
+✅ Obter coordenadas de latitude e longitude com `expo-location`  
+✅ Converter coordenadas em endereço usando a API **OpenCage Geocoding**  
+✅ Buscar informações de clima com a API **OpenWeather**  
+✅ Exibir os dados de forma organizada e amigável na tela  
+✅ Interface adaptada para áreas seguras com `SafeAreaView`  
+✅ Estilo limpo e moderno com destaque em azul  
 
-2. Start the app
+---
 
-   ```bash
-   npx expo start
-   ```
+## 🧰 Tecnologias Utilizadas
 
-In the output, you'll find options to open the app in a
+| Tecnologia | Função |
+|-------------|---------|
+| **React Native (Expo)** | Estrutura base do aplicativo mobile |
+| **expo-location** | Obtenção de localização GPS |
+| **OpenCage API** | Conversão de coordenadas → endereço humano |
+| **OpenWeather API** | Dados meteorológicos em tempo real |
+| **SafeAreaView** | Garante que o conteúdo fique visível fora da área da câmera frontal |
+| **Tailwind CSS (opcional)** | Estilização moderna e responsiva |
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+---
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## ⚙️ Instalação e Configuração
 
-## Get a fresh project
-
-When you're ready, run:
+### 1. Clonar o projeto
 
 ```bash
-npm run reset-project
+git clone https://github.com/usuario/projeto-clima.git
+cd projeto-clima
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### 2. Instalar dependências
 
-## Learn more
+```bash
+npm install
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+### 3. Criar as chaves de API no `Localizacao.tsx`
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+No arquivo Localizacao, coloque suas chaves de API:
 
-## Join the community
+```
+OPENCAGE_API_KEY=SuaChaveAqui
+OPENWEATHER_API_KEY=SuaChaveAqui
+```
 
-Join our community of developers creating universal apps.
+### 4. Executar o projeto
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```bash
+npx expo start
+```
+
+---
+
+## 🧠 Explicação das Principais Funções
+
+### 📍 Obtenção da Localização
+```js
+import * as Location from 'expo-location';
+
+const location = await Location.getCurrentPositionAsync({});
+setLatitude(location.coords.latitude);
+setLongitude(location.coords.longitude);
+```
+Obtém a **latitude** e **longitude** atuais do dispositivo utilizando o GPS.
+
+---
+
+### 🌎 Conversão de Coordenadas em Endereço
+```js
+const apiUrl = `https://api.opencagedata.com/geocode/v1/json?q=${latitude}+${longitude}&key=${OPENCAGE_API_KEY}`;
+```
+A função faz uma requisição à **OpenCage API**, que converte as coordenadas em um **endereço formatado** (rua, bairro, cidade, país).
+
+---
+
+### ☁️ Consulta de Clima Atual
+```js
+const weatherUrl = `http://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${OPENWEATHER_API_KEY}&units=metric&lang=pt`;
+```
+A função envia a latitude e longitude para a **OpenWeather API**, que retorna dados como:
+
+- Temperatura atual  
+- Descrição do tempo (ex: “céu limpo”)  
+- Umidade, pressão, e velocidade do vento  
+
+---
+
+### 🧱 SafeAreaView
+```js
+import { SafeAreaView } from 'react-native';
+```
+Garante que o conteúdo **não fique escondido** atrás da câmera frontal, notch ou barra superior do celular.
+
+---
+
+### 🎨 Estilização
+A interface foi projetada com:
+- Fundo branco  
+- Detalhes e botões em azul  
+- Textos grandes e legíveis  
+- Resultados exibidos de forma organizada  
+
+---
+
+## 🚀 Melhorias Futuras
+
+- Adicionar ícones meteorológicos (sol, chuva, nuvens etc.)  
+- Exibir mapa com o local atual usando `react-native-maps`  
+- Modo escuro (Dark Mode)  
+- Exibir previsão para os próximos dias  
+
+---
+
+## 👨‍💻 Autores
+
+- Richard de Oliveira Ribeiro - https://github.com/Richard15151
+- Matheus Wincler Santos - https://github.com/MathWincler
+
+---

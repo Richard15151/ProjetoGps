@@ -1,366 +1,282 @@
 import React, { useState } from 'react';
-import { View, Text, Button, StyleSheet, Alert, Linking, ScrollView, Dimensions } from 'react-native';
+import {
+  SafeAreaView,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  Linking,
+  ScrollView,
+  ActivityIndicator,
+} from 'react-native';
 import * as Location from 'expo-location';
 import Markdown from 'react-native-markdown-display';
-import WebView from 'react-native-webview'
+import { WebView } from 'react-native-webview';
 
-// Usado para garantir uma altura consistente para o mapa (melhor ter valor fixo)
-// const screenHeight = Dimensions.get('window').height; 
+const OPENCAGE_API_KEY = "668cb7b6a52a4d15a8de3f131d23ab51";
+const OPENWEATHER_API_KEY = "11baabba2e39d1fe964a6668d8c8c1f6";
 
-// 🔑 CHAVES DE API
-const OPENCAGE_API_KEY = "668cb7b6a52a4d15a8de3f131d23ab51"
-const OPENWEATHER_API_KEY = "11baabba2e39d1fe964a6668d8c8c1f6"
-const WEATHER_BASE_URL = "http://api.openweathermap.org/data/2.5/weather"
+const WEATHER_BASE_URL = "http://api.openweathermap.org/data/2.5/weather";
 
-const App = () => {
-    // ... (Estados permanecem os mesmos)
-    const [latitude, setLatitude] = useState(null);
-    const [longitude, setLongitude] = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [addressData, setAddressData] = useState(null);
-    const [loadingAddress, setLoadingAddress] = useState(false);
-    const [weatherData, setWeatherData] = useState(null);
-    const [loadingWeather, setLoadingWeather] = useState(false);
+export default function App() {
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [addressData, setAddressData] = useState<any>(null);
+  const [loadingAddress, setLoadingAddress] = useState(false);
+  const [weatherData, setWeatherData] = useState<any>(null);
+  const [loadingWeather, setLoadingWeather] = useState(false);
 
-    const getMyCurrentLocation = async () => {
-        setLoading(true);
-        setAddressData(null);
-        setWeatherData(null);
+  const getMyCurrentLocation = async () => {
+    setLoading(true);
+    setAddressData(null);
+    setWeatherData(null);
 
-        let { status } = await Location.requestForegroundPermissionsAsync();
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão Negada', 'Ative a permissão de localização.');
+      setLoading(false);
+      return;
+    }
 
-        if (status !== 'granted') {
-            Alert.alert(
-                'Permissão Negada',
-                'Não podemos obter a localização sem a permissão. Por favor, ative nas configurações do dispositivo.'
-            );
-            setLoading(false);
-            return;
-        }
+    try {
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const { latitude: lat, longitude: lon } = location?.coords || {};
+      if (lat && lon) {
+        setLatitude(lat);
+        setLongitude(lon);
+        Alert.alert('Sucesso!', 'Coordenadas obtidas.');
+      } else {
+        Alert.alert('Erro', 'Não foi possível obter as coordenadas.');
+      }
+    } catch (error) {
+      Alert.alert('Erro de GPS', 'Não foi possível obter a localização.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        try {
-            let location = await Location.getCurrentPositionAsync({
-                accuracy: Location.Accuracy.Highest,
-            });
+  const openInGoogleMaps = () => {
+    if (!latitude || !longitude) return Alert.alert('Erro', 'Obtenha a localização primeiro.');
+    const url = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+    Linking.openURL(url);
+  };
 
-            const currentLat = location.coords.latitude;
-            const currentLon = location.coords.longitude;
+  const getReverseGeocoding = async () => {
+    if (!latitude || !longitude) return Alert.alert('Atenção', 'Obtenha a localização primeiro.');
+    setLoadingAddress(true);
+    setAddressData(null);
 
-            setLatitude(currentLat);
-            setLongitude(currentLon);
+    try {
+      const apiUrl = `https://api.opencagedata.com/geocode/v1/json?q=${latitude}+${longitude}&key=${OPENCAGE_API_KEY}`;
+      const response = await fetch(apiUrl);
+      const data = await response.json();
 
-            Alert.alert('Sucesso!', 'Coordenadas obtidas com sucesso.');
-        } catch (error) {
-            console.error('Erro ao obter localização:', error);
-            Alert.alert('Erro de GPS', 'Não foi possível obter a localização. Verifique o seu GPS.');
-        } finally {
-            setLoading(false);
-        }
-    };
+      const result = data?.results?.[0];
+      if (result) {
+        const components = result.components || {};
+        const formattedAddress = result.formatted || 'Endereço não encontrado';
+        setAddressData({
+          address: formattedAddress,
+          city: components.city || components.town || components.village || 'N/A',
+          state: components.state || 'N/A',
+          country: components.country || 'N/A',
+          postcode: components.postcode || 'N/A',
+          road: components.road || 'N/A',
+        });
+        Alert.alert('Endereço Encontrado', formattedAddress);
+      }
+    } catch (error) {
+      Alert.alert('Erro de Conexão', 'Não foi possível buscar o endereço.');
+    } finally {
+      setLoadingAddress(false);
+    }
+  };
 
-    const openInGoogleMaps = () => {
-        if (!latitude || !longitude) {
-            Alert.alert('Erro', 'Por favor, obtenha a localização primeiro (Passo 1).');
-            return;
-        }
+  const getWeatherInfo = async () => {
+    if (!latitude || !longitude) return Alert.alert('Atenção', 'Obtenha a localização primeiro.');
+    setLoadingWeather(true);
+    setWeatherData(null);
 
-        const url = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+    try {
+      const url = `${WEATHER_BASE_URL}?lat=${latitude}&lon=${longitude}&appid=${OPENWEATHER_API_KEY}&units=metric&lang=pt`;
+      const response = await fetch(url);
+      const data = await response.json();
 
-        Linking.openURL(url).catch((err) =>
-            console.error('Ocorreu um erro ao abrir o link:', err)
-        );
-    };
+      if (data?.cod === 200) {
+        const weatherMain = data.weather?.[0]?.description || 'N/A';
+        const temp = data.main?.temp?.toFixed(1) || 'N/A';
+        const feelsLike = data.main?.feels_like?.toFixed(1) || 'N/A';
+        const humidity = data.main?.humidity || 'N/A';
+        const wind = data.wind?.speed?.toFixed(1) || 'N/A';
+        const city = data.name || 'N/A';
 
-    const getReverseGeocoding = async () => {
-        if (!latitude || !longitude) {
-            Alert.alert('Atenção', 'Primeiro, obtenha a sua localização (Passo 1).');
-            return;
-        }
+        setWeatherData({
+          main: weatherMain,
+          temp,
+          feels_like: feelsLike,
+          humidity,
+          wind,
+          city,
+        });
+      }
+    } catch (error) {
+      Alert.alert('Erro de Conexão', 'Não foi possível buscar o clima.');
+    } finally {
+      setLoadingWeather(false);
+    }
+  };
 
-        setLoadingAddress(true);
-        setAddressData(null);
+  const renderButton = (text: string, onPress: () => void, loadingFlag: boolean, disabled: boolean = false) => (
+    <TouchableOpacity
+      style={[styles.button, (disabled || loadingFlag) && styles.buttonDisabled]}
+      onPress={onPress}
+      disabled={disabled || loadingFlag}
+    >
+      {loadingFlag ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{text}</Text>}
+    </TouchableOpacity>
+  );
 
-        try {
-            const apiUrl = `https://api.opencagedata.com/geocode/v1/json?q=${latitude}+${longitude}&key=${OPENCAGE_API_KEY}`;
+  const renderCard = (title: string, content: string) => (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>{title}</Text>
+      <Markdown style={markdownStyles}>{content}</Markdown>
+    </View>
+  );
 
-            const response = await fetch(apiUrl);
-            const data = await response.json();
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.title}>🌍 Projeto Geolocalização</Text>
 
-            if (data.results && data.results.length > 0) {
-                const components = data.results[0].components;
-                const formattedAddress = data.results[0].formatted;
+        {renderButton("1️⃣ Obter Localização", getMyCurrentLocation, loading)}
+        {latitude && longitude && (
+          <>
+            <TouchableOpacity style={styles.mapButton} onPress={openInGoogleMaps}>
+              <Text style={styles.mapButtonText}>🗺️ Ver no Google Maps</Text>
+            </TouchableOpacity>
 
-                const extractedAddress = {
-                    address: formattedAddress,
-                    city: components.city || components.town || components.village || 'N/A',
-                    state: components.state || components.state_code || 'N/A',
-                    country: components.country || 'N/A',
-                    postcode: components.postcode || 'N/A',
-                    road: components.road || components.route || 'N/A',
-                };
+            <View style={styles.mapContainer}>
+              <WebView
+                source={{
+                  uri: `https://www.openstreetmap.org/export/embed.html?bbox=${longitude - 0.005}%2C${latitude - 0.005}%2C${longitude + 0.005}%2C${latitude + 0.005}&layer=mapnik&marker=${latitude}%2C${longitude}`
+                }}
+                style={{ flex: 1, borderRadius: 10 }}
+              />
+            </View>
+          </>
+        )}
 
-                setAddressData(extractedAddress);
-                Alert.alert('Endereço Encontrado', extractedAddress.address);
-            } else {
-                Alert.alert('Erro', 'Não foi possível encontrar o endereço para esta coordenada.');
-            }
-
-        } catch (error) {
-            console.error('Erro ao buscar endereço:', error);
-            Alert.alert('Erro de Conexão', 'Não foi possível conectar ao serviço de endereço.');
-        } finally {
-            setLoadingAddress(false);
-        }
-    };
-
-    const getWeatherInfo = async () => {
-        if (!latitude || !longitude) {
-            Alert.alert('Atenção', 'Primeiro, obtenha a sua localização (Passo 1).');
-            return;
-        }
-
-        setLoadingWeather(true);
-        setWeatherData(null);
-
-        try {
-            const url = `${WEATHER_BASE_URL}?lat=${latitude}&lon=${longitude}&appid=${OPENWEATHER_API_KEY}&units=metric&lang=pt`;
-
-            const response = await fetch(url);
-            const data = await response.json();
-
-            if (data.cod === 200) {
-                const weather = {
-                    main: data.weather[0].description,
-                    temp: data.main.temp.toFixed(1),
-                    feels_like: data.main.feels_like.toFixed(1),
-                    humidity: data.main.humidity,
-                    wind: data.wind.speed.toFixed(1),
-                    city: data.name,
-                };
-                setWeatherData(weather);
-                Alert.alert('Clima Encontrado', `Temperatura: ${weather.temp}°C em ${weather.city}`);
-            } else {
-                Alert.alert('Erro de Clima', data.message || 'Não foi possível obter dados de clima.');
-            }
-
-        } catch (error) {
-            console.error('Erro ao buscar clima:', error);
-            Alert.alert('Erro de Conexão', 'Não foi possível conectar ao serviço de clima.');
-        } finally {
-            setLoadingWeather(false);
-        }
-    };
-
-    const renderAddressDetails = () => {
-        if (!addressData) return null;
-        const markdownContent = `
-# Endereço Completo Encontrado:
-- **Rua/Estrada:** ${addressData.road}
+        {renderButton("2️⃣ Consultar Endereço", getReverseGeocoding, loadingAddress, !latitude)}
+        {addressData &&
+          renderCard(
+            "📍 Endereço Encontrado",
+            `
+- **Rua:** ${addressData.road}
 - **Cidade:** ${addressData.city}
 - **Estado:** ${addressData.state}
 - **CEP:** ${addressData.postcode}
 - **País:** ${addressData.country}
-        `;
+            `
+          )}
 
-        return (
-            <View style={styles.addressDetailsContainer}>
-                <Markdown style={markdownStyles}>
-                    {markdownContent}
-                </Markdown>
-            </View>
-        );
-    };
-
-    const renderWeatherDetails = () => {
-        if (!weatherData) return null;
-
-        const markdownContent = `
-# Clima Atual em ${weatherData.city}:
+        {renderButton("3️⃣ Consultar Clima", getWeatherInfo, loadingWeather, !latitude)}
+        {weatherData &&
+          renderCard(
+            `☀️ Clima em ${weatherData.city}`,
+            `
 - **Descrição:** ${weatherData.main}
-- **Temperatura:** **${weatherData.temp}°C**
-- **Sensação Térmica:** ${weatherData.feels_like}°C
+- **Temperatura:** ${weatherData.temp}°C
+- **Sensação:** ${weatherData.feels_like}°C
 - **Humidade:** ${weatherData.humidity}%
 - **Vento:** ${weatherData.wind} m/s
-        `;
-
-        return (
-            <View style={styles.weatherDetailsContainer}>
-                <Markdown style={markdownStyles}>
-                    {markdownContent}
-                </Markdown>
-            </View>
-        );
-    };
-
-    return (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.containerScroll}>
-            <Text style={styles.title}>Projeto Geolocalização</Text>
-
-            {/* 1. PEGAR LOCALIZAÇÃO */}
-            <Button
-                title={loading ? "1. Buscando..." : "1. PEGAR MINHA LOCALIZAÇÃO (Coordenadas)"}
-                onPress={getMyCurrentLocation}
-                disabled={loading}
-            />
-
-            {/* BOTÃO DO MAPA EXTERNO */}
-            {latitude && longitude && (
-                <View style={styles.mapButtonContainer}>
-                    <Button
-                        title="Ver no Google Maps (Redirecionamento)"
-                        onPress={openInGoogleMaps}
-                        color="#4285F4"
-                    />
-                </View>
-            )}
-
-            <View style={styles.infoContainer}>
-                <Text style={styles.label}>
-                    Latitude:
-                    <Text style={styles.value}>
-                        {latitude || ' -- '}
-                    </Text>
-                </Text>
-                <Text style={styles.label}>
-                    Longitude:
-                    <Text style={styles.value}>
-                        {longitude || ' -- '}
-                    </Text>
-                </Text>
-            </View>
-
-            {/* SEPARADOR PARA AS OPÇÕES 2 E 3 */}
-            <View style={styles.otherOptionsContainer}>
-
-                {/* 2. CONSULTAR ENDEREÇO COMPLETO */}
-                <Button
-                    title={loadingAddress ? "2. Buscando Endereço..." : "2. CONSULTAR ENDEREÇO COMPLETO"}
-                    onPress={getReverseGeocoding}
-                    disabled={!latitude || loadingAddress}
-                />
-
-                {/* EXIBIÇÃO DO ENDEREÇO */}
-                {renderAddressDetails()}
-
-                <View style={{ marginTop: 20 }}>
-                    {/* 3. CONSULTAR CLIMA DO LOCAL */}
-                    <Button
-                        title={loadingWeather ? "3. Buscando Clima..." : "3. CONSULTAR CLIMA DO LOCAL"}
-                        onPress={getWeatherInfo}
-                        disabled={!latitude || loadingWeather}
-                    />
-                </View>
-
-                {/* EXIBIÇÃO DO CLIMA */}
-                {renderWeatherDetails()}
-            </View>
-        </ScrollView>
-    );
-};
+            `
+          )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
 
 const markdownStyles = {
-    heading1: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginTop: 5,
-        marginBottom: 10,
-        color: '#005cb3',
-    },
-    list_item: {
-        fontSize: 14,
-        marginBottom: 4,
-        color: '#333',
-    },
-    strong: {
-        fontWeight: '900',
-    },
-    body: {
-        fontSize: 14,
-    }
+  list_item: { fontSize: 15, color: '#333', marginBottom: 5 },
+  text: { color: '#333' },
 };
 
 const styles = StyleSheet.create({
-    containerScroll: {
-        padding: 20,
-        backgroundColor: '#f0f4f7',
-        minHeight: '100%'
-    },
-    container: {
-        flex: 1,
-        padding: 20,
-        backgroundColor: '#f0f4f7',
-    },
-    title: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        marginBottom: 20,
-        textAlign: 'center',
-        color: '#333',
-    },
-    mapButtonContainer: {
-        marginTop: 15,
-        marginBottom: 15,
-    },
-    infoContainer: {
-        marginTop: 20,
-        padding: 15,
-        backgroundColor: '#fff',
-        borderRadius: 8,
-        borderLeftWidth: 5,
-        borderLeftColor: '#007aff',
-    },
-    addressDetailsContainer: {
-        marginTop: 15,
-        padding: 15,
-        backgroundColor: '#e6f7ff',
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: '#b3e0ff'
-    },
-    weatherDetailsContainer: {
-        marginTop: 15,
-        padding: 15,
-        backgroundColor: '#fffbe6',
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: '#ffe58f'
-    },
-    addressTitle: {
-        fontWeight: 'bold',
-        fontSize: 16,
-        marginBottom: 8,
-        color: '#005cb3',
-    },
-    weatherTitle: {
-        fontWeight: 'bold',
-        fontSize: 16,
-        marginBottom: 8,
-        color: '#d46b08',
-    },
-    addressLine: {
-        fontSize: 14,
-        marginBottom: 4,
-    },
-    weatherLine: {
-        fontSize: 14,
-        marginBottom: 4,
-    },
-    label: {
-        fontSize: 16,
-        color: '#555',
-        marginBottom: 5,
-    },
-    value: {
-        fontWeight: 'bold',
-        color: '#000',
-    },
-    otherOptionsContainer: {
-        marginTop: 40,
-        paddingTop: 20,
-        borderTopWidth: 1,
-        borderTopColor: '#ccc',
-        marginBottom: 40, // Adiciona margem no final para garantir que o último item não seja cortado
-    }
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  container: {
+    padding: 20,
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#005cb3',
+    marginBottom: 25,
+    textAlign: 'center',
+  },
+  button: {
+    backgroundColor: '#007aff',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginVertical: 8,
+    width: '90%',
+    alignItems: 'center',
+    shadowColor: '#007aff',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  buttonDisabled: {
+    backgroundColor: '#9cc6f7',
+  },
+  buttonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  mapButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#007aff',
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 10,
+    width: '90%',
+    alignItems: 'center',
+  },
+  mapButtonText: {
+    color: '#007aff',
+    fontWeight: '600',
+  },
+  mapContainer: {
+    height: 250,
+    width: '100%',
+    borderRadius: 10,
+    marginTop: 15,
+    overflow: 'hidden',
+  },
+  card: {
+    backgroundColor: '#eaf3ff',
+    borderRadius: 15,
+    padding: 15,
+    width: '95%',
+    marginTop: 15,
+    shadowColor: '#005cb3',
+    shadowOpacity: 0.15,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#005cb3',
+    marginBottom: 10,
+  },
 });
-
-export default App;
